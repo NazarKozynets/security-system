@@ -1,0 +1,47 @@
+.hero {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-6);
+}
+
+.heroCard {
+  background: linear-gradient(135deg, #ffffff 0%, #f0f5fb 50%, #ffffff 100%);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-6);
+  text-align: left;
+}
+
+.heroTitle {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+  letter-spacing: -0.03em;
+  color: var(--color-text);
+}
+
+.heroText {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-5);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.points {
+  margin: var(--space-5) 0 0;
+  padding-left: var(--space-5);
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.points li {
+  margin-bottom: var(--space-2);
+}
