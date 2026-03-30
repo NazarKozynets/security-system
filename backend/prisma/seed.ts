@@ -1,7 +1,7 @@
-import { EventType, PrismaClient, Severity, UserStatus } from '@prisma/client';
+import 'dotenv/config';
+import { EventType, Severity, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-
-const prisma = new PrismaClient();
+import {prisma, prismaPool} from "./prisma.client";
 
 async function main() {
   const permissions = [
@@ -102,8 +102,11 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => prisma.$disconnect());
+    .catch((e) => {
+        console.error(e);
+        process.exit(1);
+    })
+    .finally(async () => {
+        await prisma.$disconnect();
+        await prismaPool.end();
+    });

@@ -13,12 +13,16 @@ export class UserResponseDto {
 }
 
 export const mapUserResponse = (user: any): UserResponseDto => {
-  const roles = (user.userRoles?.map((ur: any) => ur.role?.name ?? ur.roleName).filter(Boolean) ?? []) as string[];
+  const roles = (user.userRoles
+    ?.map((ur: any) => ur.role?.name ?? ur.roleName)
+    .filter(Boolean) ?? []) as string[];
   const permissions = user.userRoles
     ? ([
         ...new Set(
           user.userRoles.flatMap((ur: any) =>
-            (ur.role?.rolePermissions ?? []).map((rp: any) => rp.permission.code),
+            (ur.role?.rolePermissions ?? []).map(
+              (rp: any) => rp.permission.code,
+            ),
           ),
         ),
       ] as string[])

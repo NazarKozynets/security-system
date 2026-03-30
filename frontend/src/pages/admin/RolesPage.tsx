@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { permissionsApi } from '../../api/permissions.api';
 import { rolesApi } from '../../api/roles.api';
 import { usePermission } from '../../hooks/usePermission';
-import type { Permission, Role } from '../../types/domain';
+import type { Permission, Role } from '../../types';
 import { getErrorMessage } from '../../shared/lib/errors';
 import { Button } from '../../shared/ui/Button';
 import { Card } from '../../shared/ui/Card';
