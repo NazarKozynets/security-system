@@ -15,6 +15,7 @@ import { UserAccessPage } from '../pages/admin/UserAccessPage';
 import { UserDetailPage } from '../pages/admin/UserDetailPage';
 import { UsersPage } from '../pages/admin/UsersPage';
 import { LoginPage } from '../pages/auth/LoginPage';
+import { SignupPage } from '../pages/auth/SignupPage';
 import { ForbiddenPage } from '../pages/errors/ForbiddenPage';
 import { NotFoundPage } from '../pages/errors/NotFoundPage';
 import { HomePage } from '../pages/home/HomePage';
@@ -26,6 +27,7 @@ export function AppRoutes() {
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
         <Route path="/forbidden" element={<ForbiddenPage />} />
       </Route>
 

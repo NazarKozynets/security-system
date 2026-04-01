@@ -19,9 +19,16 @@ export function HomePage() {
         </p>
         <div className={styles.actions}>
           {!isAuthenticated ? (
-            <Link to="/login">
-              <Button type="button">Sign in to continue</Button>
-            </Link>
+            <>
+              <Link to="/login">
+                <Button type="button">Sign in</Button>
+              </Link>
+              <Link to="/signup">
+                <Button type="button" variant="secondary">
+                  Create account
+                </Button>
+              </Link>
+            </>
           ) : canAdmin ? (
             <Link to="/admin">
               <Button type="button">Open admin dashboard</Button>

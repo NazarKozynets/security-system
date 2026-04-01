@@ -28,6 +28,13 @@ export class SecurityAuditLogger {
     });
   }
 
+  userRegistered(ctx: SecurityAuditContext) {
+    this.winston.logger.info('USER_REGISTERED', {
+      category: 'security',
+      ...ctx,
+    });
+  }
+
   accountLockout(ctx: SecurityAuditContext & { until?: string }) {
     this.winston.logger.warn('ACCOUNT_LOCKOUT', {
       category: 'security',

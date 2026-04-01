@@ -12,14 +12,16 @@ import { Input } from '../../shared/ui/Input';
 import { PageHeader } from '../../shared/ui/PageHeader';
 
 const schema = z.object({
+  firstName: z.string().min(1, 'Required'),
+  lastName: z.string().min(1, 'Required'),
   email: z.string().email(),
   password: z.string().min(8),
 });
 
 type FormValues = z.infer<typeof schema>;
 
-export function LoginPage() {
-  const { login } = useAuth();
+export function SignupPage() {
+  const { signup } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
@@ -32,8 +34,8 @@ export function LoginPage() {
 
   const onSubmit = async (values: FormValues) => {
     try {
-      const loggedInUser = await login(values.email, values.password);
-      if (hasAdminPanelAccess(loggedInUser)) {
+      const user = await signup(values);
+      if (hasAdminPanelAccess(user)) {
         const dest =
           from && from.startsWith('/admin') ? from : '/admin';
         navigate(dest, { replace: true });
@@ -43,15 +45,27 @@ export function LoginPage() {
         navigate('/', { replace: true });
       }
     } catch (e) {
-      toast.error(getErrorMessage(e, 'Invalid credentials'));
+      toast.error(getErrorMessage(e, 'Could not create account'));
     }
   };
 
   return (
     <div style={{ maxWidth: 440, margin: '48px auto', padding: '0 16px' }}>
-      <PageHeader title="Sign in" subtitle="Use your institutional account." />
+      <PageHeader title="Create account" subtitle="Register to access the platform." />
       <Card>
         <form onSubmit={handleSubmit(onSubmit)}>
+          <Input
+            label="First name"
+            autoComplete="given-name"
+            error={errors.firstName?.message}
+            {...register('firstName')}
+          />
+          <Input
+            label="Last name"
+            autoComplete="family-name"
+            error={errors.lastName?.message}
+            {...register('lastName')}
+          />
           <Input
             label="Email"
             type="email"
@@ -62,19 +76,16 @@ export function LoginPage() {
           <Input
             label="Password"
             type="password"
-            autoComplete="current-password"
+            autoComplete="new-password"
             error={errors.password?.message}
             {...register('password')}
           />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Signing in…' : 'Sign in'}
+              {isSubmitting ? 'Creating account…' : 'Sign up'}
             </Button>
-            <Link to="/signup" style={{ alignSelf: 'center', fontSize: 14 }}>
-              Create an account
-            </Link>
-            <Link to="/" style={{ alignSelf: 'center', fontSize: 14 }}>
-              Back to home
+            <Link to="/login" style={{ alignSelf: 'center', fontSize: 14 }}>
+              Already have an account? Sign in
             </Link>
           </div>
         </form>

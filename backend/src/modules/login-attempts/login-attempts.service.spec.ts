@@ -14,4 +14,18 @@ describe('LoginAttemptsService', () => {
       expect.objectContaining({ skip: 10, take: 10 }),
     );
   });
+
+  it('findOne returns single row', async () => {
+    const prisma: any = {
+      loginAttempt: {
+        findUnique: jest.fn().mockResolvedValue({ id: 5, email: 'a@b.c' }),
+      },
+    };
+    const svc = new LoginAttemptsService(prisma);
+    const row = await svc.findOne(5);
+    expect(row?.id).toBe(5);
+    expect(prisma.loginAttempt.findUnique).toHaveBeenCalledWith({
+      where: { id: 5 },
+    });
+  });
 });

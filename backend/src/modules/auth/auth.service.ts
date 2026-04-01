@@ -52,6 +52,22 @@ export class AuthService {
         },
       },
     });
+
+    await this.prisma.securityEvent.create({
+      data: {
+        userId: user.id,
+        eventType: EventType.USER_CREATED,
+        severity: Severity.LOW,
+        entityType: 'User',
+        entityId: String(user.id),
+        description: `Self-service registration: ${user.email}`,
+      },
+    });
+    this.audit.userRegistered({
+      userId: user.id,
+      email: user.email,
+    });
+
     return this.authPayload(user);
   }
 
