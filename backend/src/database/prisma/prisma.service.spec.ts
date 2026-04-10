@@ -3,14 +3,6 @@ jest.mock('../../../prisma/prisma.client', () => {
     prisma: {
       $connect: jest.fn().mockResolvedValue(undefined),
       $disconnect: jest.fn().mockResolvedValue(undefined),
-      user: {},
-      role: {},
-      userRole: {},
-      permission: {},
-      rolePermission: {},
-      loginAttempt: {},
-      securityEvent: {},
-      refreshToken: {},
       $queryRaw: jest.fn(),
       $executeRaw: jest.fn(),
       $queryRawUnsafe: jest.fn(),
@@ -34,9 +26,9 @@ describe('PrismaService', () => {
     expect(prismaPool.end).toHaveBeenCalled();
   });
 
-  it('exposes prisma delegates on getters', () => {
+  it('exposes the shared client and raw SQL helpers', () => {
     const svc = new PrismaService();
-    expect(svc.user).toBe(prisma.user);
+    expect(svc.client).toBe(prisma);
     expect(typeof svc.$queryRaw).toBe('function');
   });
 });

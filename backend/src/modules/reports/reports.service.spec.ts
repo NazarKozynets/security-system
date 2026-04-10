@@ -1,85 +1,111 @@
+import { UserStatus } from '@prisma/client';
 import { ReportsService } from './reports.service';
 
 describe('ReportsService', () => {
+  const audit = { reportGenerated: jest.fn() };
+
+  const mk = (overrides: {
+    loginAttemptRepository?: any;
+    securityEventRepository?: any;
+    userRepository?: any;
+    securityReportRepository?: any;
+  }) =>
+    new ReportsService(
+      overrides.loginAttemptRepository ?? {},
+      overrides.securityEventRepository ?? {},
+      overrides.userRepository ?? {},
+      overrides.securityReportRepository ?? {},
+      audit as any,
+    );
+
   it('builds login attempts summary counts', async () => {
-    const prismaMock: any = {
-      loginAttempt: {
-        count: jest
-          .fn()
-          .mockResolvedValueOnce(10)
-          .mockResolvedValueOnce(7)
-          .mockResolvedValueOnce(3),
-        findMany: jest.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]),
-      },
-      securityEvent: { create: jest.fn() },
+    const loginAttemptRepository = {
+      countForReport: jest
+        .fn()
+        .mockResolvedValueOnce(10)
+        .mockResolvedValueOnce(7)
+        .mockResolvedValueOnce(3),
+      findManyForReport: jest.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]),
     };
-    const audit = { reportGenerated: jest.fn() };
-    const service = new ReportsService(prismaMock, audit as any);
-
+    const service = mk({ loginAttemptRepository });
     const result = await service.loginAttempts({ success: 'false' });
-
     expect(result.summary).toEqual({ total: 10, failed: 7, successful: 3 });
     expect(result.rows).toHaveLength(2);
   });
 
   it('loginAttemptsCsv includes header', async () => {
-    const prismaMock: any = {
-      loginAttempt: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: 1,
-            email: 'a@b.c',
-            userId: 1,
-            success: true,
-            failureReason: null,
-            ipAddress: '127.0.0.1',
-            attemptedAt: new Date('2020-01-01T00:00:00.000Z'),
-          },
-        ]),
-      },
-      securityEvent: { create: jest.fn() },
+    const loginAttemptRepository = {
+      findManyForCsv: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          email: 'a@b.c',
+          userId: 1,
+          success: true,
+          failureReason: null,
+          ipAddress: '127.0.0.1',
+          attemptedAt: new Date('2020-01-01T00:00:00.000Z'),
+        },
+      ]),
     };
-    const audit = { reportGenerated: jest.fn() };
-    const service = new ReportsService(prismaMock, audit as any);
+    const securityEventRepository = { create: jest.fn() };
+    const service = mk({ loginAttemptRepository, securityEventRepository });
     const csv = await service.loginAttemptsCsv({}, 99);
     expect(csv).toContain('email');
     expect(csv).toContain('a@b.c');
-    expect(prismaMock.securityEvent.create).toHaveBeenCalled();
+    expect(securityEventRepository.create).toHaveBeenCalled();
     expect(audit.reportGenerated).toHaveBeenCalled();
   });
 
   it('summaryPdf returns a non-empty buffer', async () => {
-    const prismaMock: any = {
-      user: { count: jest.fn().mockResolvedValue(0) },
-      loginAttempt: { count: jest.fn().mockResolvedValue(0) },
-      securityEvent: {
-        count: jest.fn().mockResolvedValue(0),
-        create: jest.fn(),
-      },
-      $queryRaw: jest.fn().mockResolvedValue([]),
+    const userRepository = {
+      countTotal: jest.fn().mockResolvedValue(0),
+      countByStatus: jest.fn().mockResolvedValue(0),
     };
-    const audit = { reportGenerated: jest.fn() };
-    const service = new ReportsService(prismaMock, audit as any);
+    const loginAttemptRepository = {
+      countForReport: jest.fn().mockResolvedValue(0),
+    };
+    const securityEventRepository = {
+      countForDashboard: jest.fn().mockResolvedValue(0),
+      create: jest.fn(),
+    };
+    const securityReportRepository = {
+      getTopRiskyUserEmails: jest.fn().mockResolvedValue([]),
+    };
+    const service = mk({
+      userRepository,
+      loginAttemptRepository,
+      securityEventRepository,
+      securityReportRepository,
+    });
     const buf = await service.summaryPdf(1);
     expect(Buffer.isBuffer(buf)).toBe(true);
     expect(buf.length).toBeGreaterThan(10);
   });
 
   it('suspiciousActivity aggregates raw queries and lists', async () => {
-    const prismaMock: any = {
-      $queryRaw: jest
+    const securityReportRepository = {
+      getRiskyUsersByFailedCount: jest
         .fn()
-        .mockResolvedValueOnce([{ email: 'a@b.c', failedCount: 5 }])
-        .mockResolvedValueOnce([{ ipAddress: '1.1.1.1', failedCount: 6 }]),
-      user: {
-        findMany: jest.fn().mockResolvedValue([{ id: 1, status: 'BLOCKED' }]),
-      },
-      securityEvent: {
-        findMany: jest.fn().mockResolvedValue([{ id: 1, severity: 'HIGH' }]),
-      },
+        .mockResolvedValue([{ email: 'a@b.c', failedCount: 5 }]),
+      getRiskyIpsByFailedCount: jest
+        .fn()
+        .mockResolvedValue([{ ipAddress: '1.1.1.1', failedCount: 6 }]),
     };
-    const audit = { reportGenerated: jest.fn() };
-    const service = new ReportsService(prismaMock, audit as any);
+    const userRepository = {
+      findManyByStatusPublicFields: jest
+        .fn()
+        .mockResolvedValue([{ id: 1, status: UserStatus.BLOCKED }]),
+    };
+    const securityEventRepository = {
+      findHighSeverityRecent: jest
+        .fn()
+        .mockResolvedValue([{ id: 1, severity: 'HIGH' }]),
+    };
+    const service = mk({
+      securityReportRepository,
+      userRepository,
+      securityEventRepository,
+    });
     const out = await service.suspiciousActivity();
     expect(out.riskyUsers).toHaveLength(1);
     expect(out.riskyIps).toHaveLength(1);
@@ -88,72 +114,75 @@ describe('ReportsService', () => {
   });
 
   it('securityEvents filters by date range', async () => {
-    const prismaMock: any = {
-      securityEvent: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
+    const securityEventRepository = {
+      findManyForReport: jest.fn().mockResolvedValue([]),
     };
-    const audit = { reportGenerated: jest.fn() };
-    const service = new ReportsService(prismaMock, audit as any);
+    const service = mk({ securityEventRepository });
     await service.securityEvents({
       from: '2024-01-01',
       to: '2024-12-31',
     });
-    expect(prismaMock.securityEvent.findMany).toHaveBeenCalled();
+    expect(securityEventRepository.findManyForReport).toHaveBeenCalled();
   });
 
   it('userAccess returns roles and permissions', async () => {
-    const prismaMock: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 1,
-          email: 'u@test.local',
-          firstName: 'U',
-          lastName: 'S',
-          status: 'ACTIVE',
-          userRoles: [
-            {
-              role: {
-                name: 'admin',
-                rolePermissions: [
-                  { permission: { code: 'a.b' } },
-                  { permission: { code: 'c.d' } },
-                ],
-              },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue({
+        id: 1,
+        email: 'u@test.local',
+        firstName: 'U',
+        lastName: 'S',
+        status: UserStatus.ACTIVE,
+        userRoles: [
+          {
+            role: {
+              name: 'admin',
+              rolePermissions: [
+                { permission: { code: 'a.b' } },
+                { permission: { code: 'c.d' } },
+              ],
             },
-          ],
-        }),
-      },
+          },
+        ],
+      }),
     };
-    const audit = { reportGenerated: jest.fn() };
-    const service = new ReportsService(prismaMock, audit as any);
+    const service = mk({ userRepository });
     const out = await service.userAccess(1);
     expect(out?.roles).toContain('admin');
     expect(out?.permissions).toContain('a.b');
   });
 
   it('userAccess returns null when user missing', async () => {
-    const prismaMock: any = {
-      user: { findUnique: jest.fn().mockResolvedValue(null) },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(null),
     };
-    const service = new ReportsService(prismaMock, { reportGenerated: jest.fn() } as any);
+    const service = mk({ userRepository });
     await expect(service.userAccess(999)).resolves.toBeNull();
   });
 
   it('dashboard aggregates counts', async () => {
-    const prismaMock: any = {
-      user: {
-        count: jest
-          .fn()
-          .mockResolvedValueOnce(10)
-          .mockResolvedValueOnce(8)
-          .mockResolvedValueOnce(1),
-      },
-      loginAttempt: { count: jest.fn().mockResolvedValue(2) },
-      securityEvent: { count: jest.fn().mockResolvedValue(3) },
-      $queryRaw: jest.fn().mockResolvedValue([]),
+    const userRepository = {
+      countTotal: jest.fn().mockResolvedValue(10),
+      countByStatus: jest
+        .fn()
+        .mockResolvedValueOnce(8)
+        .mockResolvedValueOnce(1),
     };
-    const service = new ReportsService(prismaMock, { reportGenerated: jest.fn() } as any);
+    const loginAttemptRepository = {
+      countForReport: jest.fn().mockResolvedValue(2),
+    };
+    const securityEventRepository = {
+      countForDashboard: jest.fn().mockResolvedValue(3),
+    };
+    const securityReportRepository = {
+      getTopRiskyUserEmails: jest.fn().mockResolvedValue([]),
+    };
+    const service = mk({
+      userRepository,
+      loginAttemptRepository,
+      securityEventRepository,
+      securityReportRepository,
+    });
     const d = await service.dashboard();
     expect(d.totalUsers).toBe(10);
     expect(d.activeUsers).toBe(8);
@@ -163,23 +192,20 @@ describe('ReportsService', () => {
   });
 
   it('securityEventsCsv produces CSV and audit', async () => {
-    const prismaMock: any = {
-      securityEvent: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: 1,
-            eventType: 'LOGIN_SUCCESS',
-            severity: 'LOW',
-            description: 'desc',
-            userId: 1,
-            createdAt: new Date('2020-01-01T00:00:00.000Z'),
-          },
-        ]),
-        create: jest.fn(),
-      },
+    const securityEventRepository = {
+      findManyForCsv: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          eventType: 'LOGIN_SUCCESS',
+          severity: 'LOW',
+          description: 'desc',
+          userId: 1,
+          createdAt: new Date('2020-01-01T00:00:00.000Z'),
+        },
+      ]),
+      create: jest.fn(),
     };
-    const audit = { reportGenerated: jest.fn() };
-    const service = new ReportsService(prismaMock, audit as any);
+    const service = mk({ securityEventRepository });
     const csv = await service.securityEventsCsv({}, 42);
     expect(csv).toContain('eventType');
     expect(csv).toContain('LOGIN_SUCCESS');

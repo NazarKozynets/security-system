@@ -1,24 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { EventType, Severity } from '@prisma/client';
-import { PrismaService } from '../../database/prisma/prisma.service';
+import { SecurityEventRepository } from '../../repositories/security-event.repository';
 
 @Injectable()
 export class SecurityEventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly securityEventRepository: SecurityEventRepository,
+  ) {}
   findAll(params: {
     page: number;
     limit: number;
     eventType?: EventType;
     severity?: Severity;
   }) {
-    return this.prisma.securityEvent.findMany({
-      where: { eventType: params.eventType, severity: params.severity },
-      skip: (params.page - 1) * params.limit,
-      take: params.limit,
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.securityEventRepository.findManyPaginated(params);
   }
   findOne(id: number) {
-    return this.prisma.securityEvent.findUnique({ where: { id } });
+    return this.securityEventRepository.findById(id);
   }
 }

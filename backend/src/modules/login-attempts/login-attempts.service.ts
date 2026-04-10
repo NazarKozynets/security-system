@@ -1,17 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../database/prisma/prisma.service';
+import { LoginAttemptRepository } from '../../repositories/login-attempt.repository';
 
 @Injectable()
 export class LoginAttemptsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly loginAttemptRepository: LoginAttemptRepository,
+  ) {}
   findAll(page = 1, limit = 20) {
-    return this.prisma.loginAttempt.findMany({
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { attemptedAt: 'desc' },
-    });
+    return this.loginAttemptRepository.findManyPaginated(page, limit);
   }
   findOne(id: number) {
-    return this.prisma.loginAttempt.findUnique({ where: { id } });
+    return this.loginAttemptRepository.findById(id);
   }
 }

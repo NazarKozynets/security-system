@@ -1,22 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../database/prisma/prisma.service';
+import { PermissionRepository } from '../../repositories/permission.repository';
 
 @Injectable()
 export class PermissionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly permissionRepository: PermissionRepository) {}
   findAll() {
-    return this.prisma.permission.findMany({ orderBy: { code: 'asc' } });
+    return this.permissionRepository.findAllOrdered();
   }
   create(data: { code: string; name: string; description?: string }) {
-    return this.prisma.permission.create({ data });
+    return this.permissionRepository.create(data);
   }
   update(
     id: number,
     data: { code?: string; name?: string; description?: string },
   ) {
-    return this.prisma.permission.update({ where: { id }, data });
+    return this.permissionRepository.update(id, data);
   }
-  remove(id: number) {
-    return this.prisma.permission.delete({ where: { id } });
+  async remove(id: number) {
+    await this.permissionRepository.deleteById(id);
   }
 }

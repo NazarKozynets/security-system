@@ -14,14 +14,37 @@ const mockedHash = bcrypt.hash as jest.MockedFunction<typeof bcrypt.hash>;
 describe('UsersService', () => {
   const audit = { roleOrPermissionChange: jest.fn() };
 
-  const mappedUser = {
+  const rbacUser = {
     id: 1,
     email: 'u@test.local',
     firstName: 'a',
     lastName: 'b',
+    passwordHash: 'h',
     status: UserStatus.ACTIVE,
-    userRoles: [],
+    failedLoginCount: 0,
+    lockoutUntil: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    userRoles: [{ role: { name: 'user', id: 1, rolePermissions: [] } }],
   };
+
+  const mk = (o: {
+    prisma?: any;
+    userRepository?: any;
+    userRoleRepository?: any;
+    securityEventRepository?: any;
+  }) =>
+    new UsersService(
+      o.prisma ?? {
+        client: {
+          $transaction: jest.fn(async (fn: any) => fn({})),
+        },
+      },
+      o.userRepository ?? {},
+      o.userRoleRepository ?? {},
+      o.securityEventRepository ?? {},
+      audit as unknown as SecurityAuditLogger,
+    );
 
   beforeEach(() => {
     mockedHash.mockClear();
@@ -29,36 +52,19 @@ describe('UsersService', () => {
   });
 
   it('findOne throws when missing', async () => {
-    const prisma: any = {
-      user: { findUnique: jest.fn().mockResolvedValue(null) },
-    };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const userRepository = { findByIdWithRbac: jest.fn().mockResolvedValue(null) };
+    const svc = mk({ userRepository });
     await expect(svc.findOne(999)).rejects.toThrow(NotFoundException);
   });
 
   it('create logs audit', async () => {
-    const prisma: any = {
-      user: {
-        create: jest.fn().mockResolvedValue({ id: 1, email: 'n@t.c' }),
-        findUnique: jest.fn().mockResolvedValue({
-          id: 1,
-          email: 'n@t.c',
-          firstName: 'a',
-          lastName: 'b',
-          status: 'ACTIVE',
-          userRoles: [],
-        }),
-      },
-      userRole: { createMany: jest.fn() },
-      securityEvent: { create: jest.fn() },
+    const userRepository = {
+      create: jest.fn().mockResolvedValue({ id: 1 }),
+      findByIdWithRbac: jest.fn().mockResolvedValue(rbacUser),
     };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const userRoleRepository = { insertMany: jest.fn() };
+    const securityEventRepository = { create: jest.fn() };
+    const svc = mk({ userRepository, userRoleRepository, securityEventRepository });
     await svc.create(
       {
         email: 'n@t.c',
@@ -75,73 +81,55 @@ describe('UsersService', () => {
   });
 
   it('findAll maps users', async () => {
-    const prisma: any = {
-      user: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: 1,
-            email: 'a@b.c',
-            firstName: 'a',
-            lastName: 'b',
-            status: UserStatus.ACTIVE,
-            userRoles: [{ role: { name: 'user' } }],
-          },
-        ]),
-      },
+    const userRepository = {
+      findAllPaginated: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          email: 'a@b.c',
+          firstName: 'a',
+          lastName: 'b',
+          status: UserStatus.ACTIVE,
+          passwordHash: 'x',
+          failedLoginCount: 0,
+          lockoutUntil: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          userRoles: [{ role: { name: 'user', id: 1, rolePermissions: [] } }],
+        },
+      ]),
     };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const svc = mk({ userRepository });
     const rows = await svc.findAll(1, 20);
     expect(rows).toHaveLength(1);
     expect(rows[0].email).toBe('a@b.c');
-    expect(prisma.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ skip: 0, take: 20 }),
-    );
+    expect(userRepository.findAllPaginated).toHaveBeenCalledWith(1, 20);
   });
 
   it('findOne returns mapped user', async () => {
-    const prisma: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          ...mappedUser,
-          userRoles: [{ role: { name: 'user', rolePermissions: [] } }],
-        }),
-      },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(rbacUser),
     };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const svc = mk({ userRepository });
     const u = await svc.findOne(1);
     expect(u.id).toBe(1);
   });
 
   it('update writes security event and audit', async () => {
-    const prisma: any = {
-      user: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValueOnce({
-            ...mappedUser,
-            userRoles: [{ role: { name: 'user', rolePermissions: [] } }],
-          })
-          .mockResolvedValueOnce({
-            ...mappedUser,
-            userRoles: [{ role: { name: 'user', rolePermissions: [] } }],
-          }),
-        update: jest.fn(),
-      },
-      userRole: { deleteMany: jest.fn(), createMany: jest.fn() },
-      securityEvent: { create: jest.fn() },
+    const userRepository = {
+      findByIdWithRbac: jest
+        .fn()
+        .mockResolvedValueOnce(rbacUser)
+        .mockResolvedValueOnce(rbacUser),
+      updateFields: jest.fn(),
     };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const userRoleRepository = {
+      deleteAllForUser: jest.fn(),
+      insertMany: jest.fn(),
+    };
+    const securityEventRepository = { create: jest.fn() };
+    const svc = mk({ userRepository, userRoleRepository, securityEventRepository });
     await svc.update(1, { firstName: 'X' }, 9);
-    expect(prisma.securityEvent.create).toHaveBeenCalled();
+    expect(securityEventRepository.create).toHaveBeenCalled();
     expect(audit.roleOrPermissionChange).toHaveBeenCalledWith(
       'USER_UPDATED',
       expect.any(Object),
@@ -149,64 +137,50 @@ describe('UsersService', () => {
   });
 
   it('updateStatus creates blocked event when BLOCKED', async () => {
-    const prisma: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          ...mappedUser,
-          userRoles: [],
-        }),
-        update: jest.fn().mockResolvedValue({
-          ...mappedUser,
-          status: UserStatus.BLOCKED,
-        }),
-      },
-      securityEvent: { create: jest.fn() },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(rbacUser),
+      updateStatus: jest.fn().mockResolvedValue({
+        id: 1,
+        email: 'u@test.local',
+        firstName: 'a',
+        lastName: 'b',
+        status: UserStatus.BLOCKED,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
     };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const securityEventRepository = { create: jest.fn() };
+    const svc = mk({ userRepository, securityEventRepository });
     await svc.updateStatus(1, UserStatus.BLOCKED, 2);
-    expect(prisma.securityEvent.create).toHaveBeenCalled();
+    expect(securityEventRepository.create).toHaveBeenCalled();
   });
 
   it('disable delegates to updateStatus', async () => {
-    const prisma: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          ...mappedUser,
-          userRoles: [],
-        }),
-        update: jest.fn().mockResolvedValue({
-          ...mappedUser,
-          status: UserStatus.DISABLED,
-        }),
-      },
-      securityEvent: { create: jest.fn() },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(rbacUser),
+      updateStatus: jest.fn().mockResolvedValue({
+        id: 1,
+        email: 'u@test.local',
+        firstName: 'a',
+        lastName: 'b',
+        status: UserStatus.DISABLED,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
     };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const securityEventRepository = { create: jest.fn() };
+    const svc = mk({ userRepository, securityEventRepository });
     const u = await svc.disable(1, 3);
     expect(u.status).toBe(UserStatus.DISABLED);
   });
 
   it('assignRoles creates audit', async () => {
-    const prisma: any = {
-      userRole: { createMany: jest.fn() },
-      securityEvent: { create: jest.fn() },
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          ...mappedUser,
-          userRoles: [{ role: { name: 'user', rolePermissions: [] } }],
-        }),
-      },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(rbacUser),
     };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const userRoleRepository = { insertMany: jest.fn() };
+    const securityEventRepository = { create: jest.fn() };
+    const svc = mk({ userRepository, userRoleRepository, securityEventRepository });
     await svc.assignRoles(1, [2], 5);
     expect(audit.roleOrPermissionChange).toHaveBeenCalledWith(
       'ROLE_ASSIGNED',
@@ -215,18 +189,11 @@ describe('UsersService', () => {
   });
 
   it('removeRole deletes and audits', async () => {
-    const prisma: any = {
-      userRole: {
-        delete: jest.fn().mockResolvedValue({}),
-      },
-      securityEvent: { create: jest.fn() },
-    };
-    const svc = new UsersService(
-      prisma,
-      audit as unknown as SecurityAuditLogger,
-    );
+    const userRoleRepository = { deletePair: jest.fn() };
+    const securityEventRepository = { create: jest.fn() };
+    const svc = mk({ userRoleRepository, securityEventRepository });
     const out = await svc.removeRole(1, 2, 8);
     expect(out.success).toBe(true);
-    expect(prisma.securityEvent.create).toHaveBeenCalled();
+    expect(securityEventRepository.create).toHaveBeenCalled();
   });
 });

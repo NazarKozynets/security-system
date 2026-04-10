@@ -19,16 +19,19 @@ export function ReportsSecurityEventsPage() {
   const [to, setTo] = useState('');
   const [eventType, setEventType] = useState('');
   const [severity, setSeverity] = useState('');
+  const [downloading, setDownloading] = useState(false);
+
+  const reportParams = {
+    from: from || undefined,
+    to: to || undefined,
+    eventType: eventType || undefined,
+    severity: severity || undefined,
+  };
 
   const load = async () => {
     try {
       setLoading(true);
-      const data = await reportsApi.securityEvents({
-        from: from || undefined,
-        to: to || undefined,
-        eventType: eventType || undefined,
-        severity: severity || undefined,
-      });
+      const data = await reportsApi.securityEvents(reportParams);
       setRows(data);
       setError('');
     } catch (e) {
@@ -41,6 +44,17 @@ export function ReportsSecurityEventsPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  const handleDownloadCsv = async () => {
+    try {
+      setDownloading(true);
+      await reportsApi.downloadSecurityEventsCsv(reportParams);
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   if (loading && rows.length === 0) return <Spinner />;
   if (error) return <EmptyState title="Report failed" description={error} />;
@@ -61,9 +75,27 @@ export function ReportsSecurityEventsPage() {
             <option value="CRITICAL">CRITICAL</option>
           </Select>
         </div>
-        <Button type="button" style={{ marginTop: 12 }} onClick={() => void load()}>
-          Apply
-        </Button>
+        <div
+          style={{
+            marginTop: 12,
+            display: 'flex',
+            gap: 12,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+          }}
+        >
+          <Button type="button" onClick={() => void load()}>
+            Apply
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={downloading}
+            onClick={() => void handleDownloadCsv()}
+          >
+            {downloading ? 'Downloading…' : 'Download CSV'}
+          </Button>
+        </div>
       </Card>
 
       <div style={{ marginTop: 16 }}>

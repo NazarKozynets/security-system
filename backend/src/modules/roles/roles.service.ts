@@ -1,47 +1,46 @@
 import { Injectable } from '@nestjs/common';
 import { EventType, Severity } from '@prisma/client';
 import { SecurityAuditLogger } from '../../integrations/logger/security-audit-logger.service';
-import { PrismaService } from '../../database/prisma/prisma.service';
+import { RolePermissionRepository } from '../../repositories/role-permission.repository';
+import { RoleRepository } from '../../repositories/role.repository';
+import { SecurityEventRepository } from '../../repositories/security-event.repository';
 
 @Injectable()
 export class RolesService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly roleRepository: RoleRepository,
+    private readonly rolePermissionRepository: RolePermissionRepository,
+    private readonly securityEventRepository: SecurityEventRepository,
     private readonly audit: SecurityAuditLogger,
   ) {}
 
   findAll() {
-    return this.prisma.role.findMany({
-      include: { rolePermissions: { include: { permission: true } } },
-    });
+    return this.roleRepository.findAllWithPermissions();
   }
   create(data: { name: string; description?: string }) {
-    return this.prisma.role.create({ data });
+    return this.roleRepository.create(data);
   }
   update(id: number, data: { name?: string; description?: string }) {
-    return this.prisma.role.update({ where: { id }, data });
+    return this.roleRepository.update(id, data);
   }
-  remove(id: number) {
-    return this.prisma.role.delete({ where: { id } });
+  async remove(id: number) {
+    await this.roleRepository.deleteById(id);
   }
   async assignPermissions(
     roleId: number,
     permissionIds: number[],
     actorId?: number,
   ) {
-    await this.prisma.rolePermission.createMany({
-      data: permissionIds.map((permissionId) => ({ roleId, permissionId })),
-      skipDuplicates: true,
-    });
-    await this.prisma.securityEvent.create({
-      data: {
-        userId: actorId,
-        eventType: EventType.PERMISSION_CHANGED,
-        severity: Severity.HIGH,
-        entityType: 'Role',
-        entityId: String(roleId),
-        description: `Permissions updated for role ${roleId}`,
-      },
+    await this.rolePermissionRepository.insertMany(
+      permissionIds.map((permissionId) => ({ roleId, permissionId })),
+    );
+    await this.securityEventRepository.create({
+      userId: actorId,
+      eventType: EventType.PERMISSION_CHANGED,
+      severity: Severity.HIGH,
+      entityType: 'Role',
+      entityId: String(roleId),
+      description: `Permissions updated for role ${roleId}`,
     });
     this.audit.roleOrPermissionChange('PERMISSIONS_ASSIGNED_TO_ROLE', {
       userId: actorId,
@@ -50,9 +49,7 @@ export class RolesService {
     });
     return this.findAll();
   }
-  removePermission(roleId: number, permissionId: number) {
-    return this.prisma.rolePermission.delete({
-      where: { roleId_permissionId: { roleId, permissionId } },
-    });
+  async removePermission(roleId: number, permissionId: number) {
+    await this.rolePermissionRepository.deletePair(roleId, permissionId);
   }
 }

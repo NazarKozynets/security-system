@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionGuard } from './common/guards/permission.guard';
 import { PrismaModule } from './database/prisma/prisma.module';
+import { RepositoriesModule } from './repositories/repositories.module';
 import { LoggerIntegrationModule } from './integrations/logger/logger.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { LoginAttemptsModule } from './modules/login-attempts/login-attempts.module';
@@ -19,6 +20,7 @@ import { UsersModule } from './modules/users/users.module';
     ConfigModule.forRoot({ isGlobal: true }),
     LoggerIntegrationModule,
     PrismaModule,
+    RepositoriesModule,
     AuthModule,
     UsersModule,
     RolesModule,

@@ -1,4 +1,8 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { reportsApi } from '../../api/reports.api';
+import { getErrorMessage } from '../../shared/lib/errors';
+import { Button } from '../../shared/ui/Button';
 import { Card } from '../../shared/ui/Card';
 import { PageHeader } from '../../shared/ui/PageHeader';
 import styles from './ReportsHubPage.module.css';
@@ -10,9 +14,38 @@ const tiles = [
 ];
 
 export function ReportsHubPage() {
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+
+  const handleDownloadPdf = async () => {
+    try {
+      setPdfError('');
+      setPdfLoading(true);
+      await reportsApi.downloadSummaryPdf();
+    } catch (e) {
+      setPdfError(getErrorMessage(e));
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader title="Reports" subtitle="Analytics views for coursework demonstration." />
+      <div style={{ marginBottom: 16 }}>
+        <Card compact>
+          <h3 style={{ marginTop: 0 }}>Exports</h3>
+          <p style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--color-text-muted)' }}>
+            CSV exports use the filters on each report page. PDF is a one-click summary.
+          </p>
+          <Button type="button" variant="secondary" disabled={pdfLoading} onClick={() => void handleDownloadPdf()}>
+            {pdfLoading ? 'Downloading…' : 'Download summary PDF'}
+          </Button>
+          {pdfError ? (
+            <p style={{ margin: '12px 0 0', fontSize: 13, color: 'var(--color-danger)' }}>{pdfError}</p>
+          ) : null}
+        </Card>
+      </div>
       <div className={styles.grid}>
         {tiles.map((t) => (
           <Link key={t.to} to={t.to} className={styles.tileLink}>

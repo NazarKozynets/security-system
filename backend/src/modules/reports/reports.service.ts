@@ -1,14 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import { EventType, Severity } from '@prisma/client';
+import { EventType, Severity, UserStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { toCsvRow } from '../../integrations/export/csv-export.util';
 import { SecurityAuditLogger } from '../../integrations/logger/security-audit-logger.service';
-import { PrismaService } from '../../database/prisma/prisma.service';
+import { LoginAttemptRepository } from '../../repositories/login-attempt.repository';
+import { SecurityEventRepository } from '../../repositories/security-event.repository';
+import { SecurityReportRepository } from '../../repositories/security-report.repository';
+import { UserRepository } from '../../repositories/user.repository';
 
 @Injectable()
 export class ReportsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly loginAttemptRepository: LoginAttemptRepository,
+    private readonly securityEventRepository: SecurityEventRepository,
+    private readonly userRepository: UserRepository,
+    private readonly securityReportRepository: SecurityReportRepository,
     private readonly audit: SecurityAuditLogger,
   ) {}
 
@@ -18,22 +24,26 @@ export class ReportsService {
     userId?: number;
     success?: string;
   }) {
-    const where = {
-      userId: params.userId,
-      success:
-        params.success !== undefined ? params.success === 'true' : undefined,
-      attemptedAt: {
-        gte: params.from ? new Date(params.from) : undefined,
-        lte: params.to ? new Date(params.to) : undefined,
-      },
-    };
+    const from = params.from ? new Date(params.from) : undefined;
+    const to = params.to ? new Date(params.to) : undefined;
+    const userId = params.userId;
+    const success =
+      params.success !== undefined ? params.success === 'true' : undefined;
+
+    const base = { userId, from, to };
     const [total, failed, successful, rows] = await Promise.all([
-      this.prisma.loginAttempt.count({ where }),
-      this.prisma.loginAttempt.count({ where: { ...where, success: false } }),
-      this.prisma.loginAttempt.count({ where: { ...where, success: true } }),
-      this.prisma.loginAttempt.findMany({
-        where,
-        orderBy: { attemptedAt: 'desc' },
+      this.loginAttemptRepository.countForReport(base),
+      this.loginAttemptRepository.countForReport({
+        ...base,
+        success: false,
+      }),
+      this.loginAttemptRepository.countForReport({
+        ...base,
+        success: true,
+      }),
+      this.loginAttemptRepository.findManyForReport({
+        ...base,
+        success,
         take: 100,
       }),
     ]);
@@ -41,35 +51,16 @@ export class ReportsService {
   }
 
   async suspiciousActivity() {
-    const riskyUsers = await this.prisma.$queryRaw`
-      SELECT la.email, COUNT(*)::int AS "failedCount"
-      FROM "LoginAttempt" la
-      WHERE la.success = false AND la."attemptedAt" >= NOW() - INTERVAL '7 days'
-      GROUP BY la.email
-      HAVING COUNT(*) >= 3
-      ORDER BY "failedCount" DESC
-      LIMIT 10
-    `;
-    const riskyIps = await this.prisma.$queryRaw`
-      SELECT la."ipAddress", COUNT(*)::int AS "failedCount"
-      FROM "LoginAttempt" la
-      WHERE la.success = false
-        AND la."attemptedAt" >= NOW() - INTERVAL '7 days'
-        AND la."ipAddress" IS NOT NULL
-      GROUP BY la."ipAddress"
-      HAVING COUNT(*) >= 5
-      ORDER BY "failedCount" DESC
-      LIMIT 10
-    `;
-    const blockedUsers = await this.prisma.user.findMany({
-      where: { status: 'BLOCKED' },
-      take: 10,
-    });
-    const highSeverityEvents = await this.prisma.securityEvent.findMany({
-      where: { severity: { in: [Severity.HIGH, Severity.CRITICAL] } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+    const [riskyUsers, riskyIps, blockedUsers, highSeverityEvents] =
+      await Promise.all([
+        this.securityReportRepository.getRiskyUsersByFailedCount(),
+        this.securityReportRepository.getRiskyIpsByFailedCount(),
+        this.userRepository.findManyByStatusPublicFields(UserStatus.BLOCKED, 10),
+        this.securityEventRepository.findHighSeverityRecent(
+          [Severity.HIGH, Severity.CRITICAL],
+          50,
+        ),
+      ]);
     return { riskyUsers, riskyIps, blockedUsers, highSeverityEvents };
   }
 
@@ -79,33 +70,17 @@ export class ReportsService {
     eventType?: any;
     severity?: any;
   }) {
-    return this.prisma.securityEvent.findMany({
-      where: {
-        eventType: params.eventType,
-        severity: params.severity,
-        createdAt: {
-          gte: params.from ? new Date(params.from) : undefined,
-          lte: params.to ? new Date(params.to) : undefined,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
+    return this.securityEventRepository.findManyForReport({
+      eventType: params.eventType,
+      severity: params.severity,
+      from: params.from ? new Date(params.from) : undefined,
+      to: params.to ? new Date(params.to) : undefined,
       take: 200,
     });
   }
 
   async userAccess(userId: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        userRoles: {
-          include: {
-            role: {
-              include: { rolePermissions: { include: { permission: true } } },
-            },
-          },
-        },
-      },
-    });
+    const user = await this.userRepository.findByIdWithRbac(userId);
     if (!user) return null;
     return {
       id: user.id,
@@ -125,6 +100,8 @@ export class ReportsService {
   }
 
   async dashboard() {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const [
       totalUsers,
       activeUsers,
@@ -133,28 +110,15 @@ export class ReportsService {
       eventsLast7d,
       topRiskyUsers,
     ] = await Promise.all([
-      this.prisma.user.count(),
-      this.prisma.user.count({ where: { status: 'ACTIVE' } }),
-      this.prisma.user.count({ where: { status: 'BLOCKED' } }),
-      this.prisma.loginAttempt.count({
-        where: {
-          success: false,
-          attemptedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-        },
+      this.userRepository.countTotal(),
+      this.userRepository.countByStatus(UserStatus.ACTIVE),
+      this.userRepository.countByStatus(UserStatus.BLOCKED),
+      this.loginAttemptRepository.countForReport({
+        success: false,
+        from: dayAgo,
       }),
-      this.prisma.securityEvent.count({
-        where: {
-          createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-        },
-      }),
-      this.prisma.$queryRaw`
-          SELECT la.email, COUNT(*)::int as "failedCount"
-          FROM "LoginAttempt" la
-          WHERE la.success = false AND la."attemptedAt" >= NOW() - INTERVAL '7 days'
-          GROUP BY la.email
-          ORDER BY "failedCount" DESC
-          LIMIT 5
-        `,
+      this.securityEventRepository.countForDashboard(weekAgo),
+      this.securityReportRepository.getTopRiskyUserEmails(),
     ]);
     return {
       totalUsers,
@@ -170,19 +134,16 @@ export class ReportsService {
     params: { from?: string; to?: string; userId?: number; success?: string },
     actorId?: number,
   ) {
-    const where = {
-      userId: params.userId,
-      success:
-        params.success !== undefined ? params.success === 'true' : undefined,
-      attemptedAt: {
-        gte: params.from ? new Date(params.from) : undefined,
-        lte: params.to ? new Date(params.to) : undefined,
-      },
-    };
-    const rows = await this.prisma.loginAttempt.findMany({
-      where,
-      orderBy: { attemptedAt: 'desc' },
-      take: 5000,
+    const from = params.from ? new Date(params.from) : undefined;
+    const to = params.to ? new Date(params.to) : undefined;
+    const userId = params.userId;
+    const success =
+      params.success !== undefined ? params.success === 'true' : undefined;
+    const rows = await this.loginAttemptRepository.findManyForCsv({
+      userId,
+      success,
+      from,
+      to,
     });
     await this.recordReportGenerated(actorId, 'login_attempts_csv');
     const header = [
@@ -217,17 +178,11 @@ export class ReportsService {
     },
     actorId?: number,
   ) {
-    const rows = await this.prisma.securityEvent.findMany({
-      where: {
-        eventType: params.eventType as any,
-        severity: params.severity as any,
-        createdAt: {
-          gte: params.from ? new Date(params.from) : undefined,
-          lte: params.to ? new Date(params.to) : undefined,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 5000,
+    const rows = await this.securityEventRepository.findManyForCsv({
+      eventType: params.eventType,
+      severity: params.severity,
+      from: params.from ? new Date(params.from) : undefined,
+      to: params.to ? new Date(params.to) : undefined,
     });
     await this.recordReportGenerated(actorId, 'security_events_csv');
     const header = [
@@ -280,15 +235,13 @@ export class ReportsService {
     reportType: string,
   ) {
     if (actorId) {
-      await this.prisma.securityEvent.create({
-        data: {
-          userId: actorId,
-          eventType: EventType.REPORT_GENERATED,
-          severity: Severity.LOW,
-          entityType: 'Report',
-          entityId: reportType,
-          description: `Report export: ${reportType}`,
-        },
+      await this.securityEventRepository.create({
+        userId: actorId,
+        eventType: EventType.REPORT_GENERATED,
+        severity: Severity.LOW,
+        entityType: 'Report',
+        entityId: reportType,
+        description: `Report export: ${reportType}`,
       });
     }
     this.audit.reportGenerated({ userId: actorId, reportType });

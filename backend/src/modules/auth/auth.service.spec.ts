@@ -29,7 +29,21 @@ describe('AuthService', () => {
     userRegistered: jest.fn(),
   };
 
-  const buildService = (prisma: any) => {
+  const defaultPrisma = () => ({
+    client: {
+      $transaction: jest.fn(async (fn: any) => fn({})),
+    },
+  });
+
+  const buildService = (deps: {
+    prisma?: any;
+    userRepository?: any;
+    roleRepository?: any;
+    userRoleRepository?: any;
+    loginAttemptRepository?: any;
+    securityEventRepository?: any;
+    refreshTokenRepository?: any;
+  }) => {
     const jwt = {
       sign: jest.fn().mockReturnValue('jwt'),
     } as unknown as JwtService;
@@ -38,7 +52,13 @@ describe('AuthService', () => {
       getOrThrow: jest.fn().mockReturnValue('secret'),
     } as unknown as ConfigService;
     return new AuthService(
-      prisma,
+      deps.prisma ?? defaultPrisma(),
+      deps.userRepository ?? {},
+      deps.roleRepository ?? {},
+      deps.userRoleRepository ?? {},
+      deps.loginAttemptRepository ?? {},
+      deps.securityEventRepository ?? {},
+      deps.refreshTokenRepository ?? {},
       jwt,
       config,
       audit as unknown as SecurityAuditLogger,
@@ -59,37 +79,42 @@ describe('AuthService', () => {
       status: UserStatus.ACTIVE,
       failedLoginCount: 2,
       lockoutUntil: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
       userRoles: [
         {
           role: {
+            id: 1,
             name: 'user',
             rolePermissions: [{ permission: { code: 'x' } }],
           },
         },
       ],
     };
-    const prisma: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue(user),
-        update: jest.fn().mockResolvedValue(user),
-      },
-      loginAttempt: { create: jest.fn() },
-      securityEvent: { create: jest.fn() },
-      refreshToken: { create: jest.fn() },
+    const userRepository = {
+      findByEmailWithRbac: jest.fn().mockResolvedValue(user),
+      updateFields: jest.fn().mockResolvedValue(undefined),
     };
-    const service = buildService(prisma);
+    const loginAttemptRepository = { create: jest.fn() };
+    const securityEventRepository = { create: jest.fn() };
+    const refreshTokenRepository = { create: jest.fn() };
+    const service = buildService({
+      userRepository,
+      loginAttemptRepository,
+      securityEventRepository,
+      refreshTokenRepository,
+    });
     await service.login(
       { email: 'u@test.local', password: 'password123' },
       '10.0.0.1',
       'ua',
     );
     expect(audit.loginSuccess).toHaveBeenCalled();
-    expect(prisma.user.update).toHaveBeenCalledWith(
+    expect(userRepository.updateFields).toHaveBeenCalledWith(
+      1,
       expect.objectContaining({
-        data: expect.objectContaining({
-          failedLoginCount: 0,
-          lockoutUntil: null,
-        }),
+        failedLoginCount: 0,
+        lockoutUntil: null,
       }),
     );
   });
@@ -104,24 +129,27 @@ describe('AuthService', () => {
       status: UserStatus.ACTIVE,
       failedLoginCount: 0,
       lockoutUntil: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
       userRoles: [
         {
           role: {
+            id: 1,
             name: 'user',
             rolePermissions: [],
           },
         },
       ],
     };
-    const prisma: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue(user),
-        update: jest.fn().mockResolvedValue(user),
-      },
-      loginAttempt: { create: jest.fn() },
-      securityEvent: { create: jest.fn() },
+    const userRepository = {
+      findByEmailWithRbac: jest.fn().mockResolvedValue(user),
+      updateFields: jest.fn().mockResolvedValue(undefined),
     };
-    const service = buildService(prisma);
+    const service = buildService({
+      userRepository,
+      loginAttemptRepository: { create: jest.fn() },
+      securityEventRepository: { create: jest.fn() },
+    });
     await expect(
       service.login({ email: 'u2@test.local', password: 'password123' }),
     ).rejects.toBeDefined();
@@ -137,27 +165,38 @@ describe('AuthService', () => {
       firstName: 'A',
       lastName: 'B',
       status: UserStatus.ACTIVE,
+      failedLoginCount: 0,
+      lockoutUntil: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
       userRoles: [
         {
           role: {
+            id: 1,
             name: 'user',
             rolePermissions: [],
           },
         },
       ],
     };
-    const prisma: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue(createdUser),
-      },
-      role: {
-        findUnique: jest.fn().mockResolvedValue({ id: 1, name: 'user' }),
-      },
-      securityEvent: { create: jest.fn() },
-      refreshToken: { create: jest.fn() },
+    const userRepository = {
+      emailExists: jest.fn().mockResolvedValue(false),
+      create: jest.fn().mockResolvedValue({ id: 99 }),
+      findByIdWithRbac: jest.fn().mockResolvedValue(createdUser),
     };
-    const service = buildService(prisma);
+    const roleRepository = {
+      findByName: jest.fn().mockResolvedValue({ id: 1, name: 'user' }),
+    };
+    const userRoleRepository = { insertMany: jest.fn() };
+    const securityEventRepository = { create: jest.fn() };
+    const refreshTokenRepository = { create: jest.fn() };
+    const service = buildService({
+      userRepository,
+      roleRepository,
+      userRoleRepository,
+      securityEventRepository,
+      refreshTokenRepository,
+    });
     const result = await service.register({
       email: 'new@test.local',
       password: 'password123',
@@ -165,7 +204,7 @@ describe('AuthService', () => {
       lastName: 'B',
     });
     expect(mockedHash).toHaveBeenCalledWith('password123', 10);
-    expect(prisma.securityEvent.create).toHaveBeenCalled();
+    expect(securityEventRepository.create).toHaveBeenCalled();
     expect(audit.userRegistered).toHaveBeenCalledWith({
       userId: 99,
       email: 'new@test.local',
@@ -174,12 +213,10 @@ describe('AuthService', () => {
   });
 
   it('register throws when email already exists', async () => {
-    const prisma: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue({ id: 1, email: 'taken@test.local' }),
-      },
+    const userRepository = {
+      emailExists: jest.fn().mockResolvedValue(true),
     };
-    const service = buildService(prisma);
+    const service = buildService({ userRepository });
     await expect(
       service.register({
         email: 'taken@test.local',
@@ -196,20 +233,26 @@ describe('AuthService', () => {
       email: 'a@test.local',
       firstName: 'A',
       lastName: 'B',
+      passwordHash: 'h',
       status: UserStatus.ACTIVE,
+      failedLoginCount: 0,
+      lockoutUntil: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
       userRoles: [
         {
           role: {
+            id: 1,
             name: 'user',
             rolePermissions: [{ permission: { code: 'p1' } }],
           },
         },
       ],
     };
-    const prisma: any = {
-      user: { findUnique: jest.fn().mockResolvedValue(user) },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(user),
     };
-    const service = buildService(prisma);
+    const service = buildService({ userRepository });
     const ctx = await service.validateJwtUser(5);
     expect(ctx.id).toBe(5);
     expect(ctx.roles).toContain('user');
@@ -217,24 +260,30 @@ describe('AuthService', () => {
   });
 
   it('validateJwtUser throws when user missing or inactive', async () => {
-    const prisma: any = {
-      user: { findUnique: jest.fn().mockResolvedValue(null) },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(null),
     };
-    const service = buildService(prisma);
+    const service = buildService({ userRepository });
     await expect(service.validateJwtUser(1)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
 
-    const prisma2: any = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 1,
-          status: UserStatus.BLOCKED,
-          userRoles: [],
-        }),
-      },
+    const userRepository2 = {
+      findByIdWithRbac: jest.fn().mockResolvedValue({
+        id: 1,
+        email: 'x',
+        firstName: 'a',
+        lastName: 'b',
+        passwordHash: 'h',
+        status: UserStatus.BLOCKED,
+        failedLoginCount: 0,
+        lockoutUntil: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        userRoles: [],
+      }),
     };
-    const service2 = buildService(prisma2);
+    const service2 = buildService({ userRepository: userRepository2 });
     await expect(service2.validateJwtUser(1)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
@@ -246,15 +295,18 @@ describe('AuthService', () => {
       email: 'm@test.local',
       firstName: 'M',
       lastName: 'E',
+      passwordHash: 'h',
       status: UserStatus.ACTIVE,
-      userRoles: [
-        { role: { name: 'user', rolePermissions: [] } },
-      ],
+      failedLoginCount: 0,
+      lockoutUntil: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userRoles: [{ role: { id: 1, name: 'user', rolePermissions: [] } }],
     };
-    const prisma: any = {
-      user: { findUnique: jest.fn().mockResolvedValue(user) },
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(user),
     };
-    const service = buildService(prisma);
+    const service = buildService({ userRepository });
     const ctx = await service.me(1);
     expect(ctx.email).toBe('m@test.local');
   });
@@ -263,87 +315,115 @@ describe('AuthService', () => {
     const user = {
       id: 2,
       email: 'r@test.local',
+      firstName: 'R',
+      lastName: 'T',
+      passwordHash: 'h',
       status: UserStatus.ACTIVE,
-      userRoles: [
-        { role: { name: 'user', rolePermissions: [] } },
-      ],
+      failedLoginCount: 0,
+      lockoutUntil: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userRoles: [{ role: { id: 1, name: 'user', rolePermissions: [] } }],
     };
     const existing = {
       id: 10,
       userId: 2,
       expiresAt: new Date(Date.now() + 86400000),
-      user,
+      tokenHash: 'h',
+      revokedAt: null,
+      replacedById: null,
+      createdAt: new Date(),
     };
-    const prisma: any = {
-      refreshToken: {
-        findFirst: jest.fn().mockResolvedValue(existing),
-        create: jest.fn().mockResolvedValue({ id: 11 }),
-        update: jest.fn(),
+    const prisma = {
+      client: {
+        $transaction: jest.fn(async (fn: any) => fn({})),
       },
     };
-    const service = buildService(prisma);
+    const refreshTokenRepository = {
+      findActiveByTokenHash: jest.fn().mockResolvedValue(existing),
+      create: jest.fn().mockResolvedValue({ id: 11 }),
+      markRevoked: jest.fn(),
+    };
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(user),
+    };
+    const service = buildService({ prisma, refreshTokenRepository, userRepository });
     const out = await service.refresh('raw-refresh-token');
     expect(out.accessToken).toBe('jwt');
     expect(out.refreshToken).toBeDefined();
     expect(out.user.email).toBe('r@test.local');
-    expect(prisma.refreshToken.update).toHaveBeenCalled();
+    expect(refreshTokenRepository.markRevoked).toHaveBeenCalled();
   });
 
   it('refresh throws when token invalid or expired', async () => {
-    const prisma: any = {
-      refreshToken: { findFirst: jest.fn().mockResolvedValue(null) },
+    const refreshTokenRepository = {
+      findActiveByTokenHash: jest.fn().mockResolvedValue(null),
     };
-    const service = buildService(prisma);
+    const service = buildService({ refreshTokenRepository });
     await expect(service.refresh('bad')).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
 
-    const prisma2: any = {
-      refreshToken: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 1,
-          expiresAt: new Date(0),
-          user: {
-            status: UserStatus.ACTIVE,
-            userRoles: [],
-          },
-        }),
-      },
+    const refreshTokenRepository2 = {
+      findActiveByTokenHash: jest.fn().mockResolvedValue({
+        id: 1,
+        userId: 1,
+        expiresAt: new Date(0),
+        tokenHash: 'h',
+        revokedAt: null,
+        replacedById: null,
+        createdAt: new Date(),
+      }),
     };
-    const service2 = buildService(prisma2);
+    const service2 = buildService({
+      refreshTokenRepository: refreshTokenRepository2,
+    });
     await expect(service2.refresh('expired')).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
   });
 
   it('refresh throws Forbidden when user not active', async () => {
-    const prisma: any = {
-      refreshToken: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 1,
-          expiresAt: new Date(Date.now() + 86400000),
-          user: {
-            status: UserStatus.DISABLED,
-            userRoles: [],
-          },
-        }),
-      },
+    const user = {
+      id: 1,
+      email: 'x',
+      firstName: 'a',
+      lastName: 'b',
+      passwordHash: 'h',
+      status: UserStatus.DISABLED,
+      failedLoginCount: 0,
+      lockoutUntil: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userRoles: [],
     };
-    const service = buildService(prisma);
+    const refreshTokenRepository = {
+      findActiveByTokenHash: jest.fn().mockResolvedValue({
+        id: 1,
+        userId: 1,
+        expiresAt: new Date(Date.now() + 86400000),
+        tokenHash: 'h',
+        revokedAt: null,
+        replacedById: null,
+        createdAt: new Date(),
+      }),
+    };
+    const userRepository = {
+      findByIdWithRbac: jest.fn().mockResolvedValue(user),
+    };
+    const service = buildService({ refreshTokenRepository, userRepository });
     await expect(service.refresh('tok')).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
 
   it('logout revokes refresh token', async () => {
-    const prisma: any = {
-      refreshToken: {
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      },
+    const refreshTokenRepository = {
+      revokeAllActiveForUser: jest.fn().mockResolvedValue(undefined),
     };
-    const service = buildService(prisma);
+    const service = buildService({ refreshTokenRepository });
     const out = await service.logout(1, 'some-refresh');
     expect(out.success).toBe(true);
-    expect(prisma.refreshToken.updateMany).toHaveBeenCalled();
+    expect(refreshTokenRepository.revokeAllActiveForUser).toHaveBeenCalled();
   });
 });

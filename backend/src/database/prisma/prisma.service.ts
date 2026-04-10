@@ -3,39 +3,8 @@ import { prisma, prismaPool } from '../../../prisma/prisma.client';
 
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
+  /** Use only for raw SQL and transactions in repositories — not for model delegates. */
   readonly client = prisma;
-
-  get user() {
-    return this.client.user;
-  }
-
-  get role() {
-    return this.client.role;
-  }
-
-  get userRole() {
-    return this.client.userRole;
-  }
-
-  get permission() {
-    return this.client.permission;
-  }
-
-  get rolePermission() {
-    return this.client.rolePermission;
-  }
-
-  get loginAttempt() {
-    return this.client.loginAttempt;
-  }
-
-  get securityEvent() {
-    return this.client.securityEvent;
-  }
-
-  get refreshToken() {
-    return this.client.refreshToken;
-  }
 
   $queryRaw = this.client.$queryRaw.bind(this.client);
   $executeRaw = this.client.$executeRaw.bind(this.client);
