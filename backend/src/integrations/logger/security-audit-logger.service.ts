@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { WinstonLoggerService } from './winston-logger.service';
 
+// Context for security audit events
 export type SecurityAuditContext = {
   userId?: number;
   email?: string;
@@ -10,10 +11,13 @@ export type SecurityAuditContext = {
   metadata?: Record<string, unknown>;
 };
 
+// Logger for security audit events
+// TODO: CREATE AND INTEGRATE ENUM WITH ALL OF AVAILABLE EVENTS
 @Injectable()
 export class SecurityAuditLogger {
   constructor(private readonly winston: WinstonLoggerService) {}
 
+  // Logs successful login attempt
   loginSuccess(ctx: SecurityAuditContext) {
     this.winston.logger.info('LOGIN_SUCCESS', {
       category: 'security',
@@ -21,6 +25,7 @@ export class SecurityAuditLogger {
     });
   }
 
+  // Logs failed login attempt
   loginFailure(ctx: SecurityAuditContext & { reason?: string }) {
     this.winston.logger.warn('LOGIN_FAILURE', {
       category: 'security',
@@ -28,6 +33,7 @@ export class SecurityAuditLogger {
     });
   }
 
+  // Logs new user registration
   userRegistered(ctx: SecurityAuditContext) {
     this.winston.logger.info('USER_REGISTERED', {
       category: 'security',
@@ -35,6 +41,7 @@ export class SecurityAuditLogger {
     });
   }
 
+  // Logs account lockout
   accountLockout(ctx: SecurityAuditContext & { until?: string }) {
     this.winston.logger.warn('ACCOUNT_LOCKOUT', {
       category: 'security',
@@ -42,6 +49,7 @@ export class SecurityAuditLogger {
     });
   }
 
+  // Logs any of denied access attempts
   accessDenied(
     ctx: SecurityAuditContext & {
       requiredPermissions?: string[];
@@ -54,6 +62,7 @@ export class SecurityAuditLogger {
     });
   }
 
+  // Logs change of role or permission
   roleOrPermissionChange(
     action: string,
     ctx: SecurityAuditContext & { target?: string; details?: string },
@@ -64,6 +73,7 @@ export class SecurityAuditLogger {
     });
   }
 
+  // Logs any security event
   securityEventLogged(
     ctx: SecurityAuditContext & { eventType?: string; description?: string },
   ) {
@@ -73,6 +83,7 @@ export class SecurityAuditLogger {
     });
   }
 
+  // Generates a report
   reportGenerated(ctx: SecurityAuditContext & { reportType?: string }) {
     this.winston.logger.info('REPORT_GENERATED', {
       category: 'security',
