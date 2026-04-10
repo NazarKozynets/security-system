@@ -1,15 +1,28 @@
 import { Injectable } from '@nestjs/common';
-import { LoginAttemptRepository } from '../../repositories/login-attempt.repository';
+import {LoginAttemptRepository, LoginAttemptRow} from '../../repositories/login-attempt.repository';
+
+// Interface for LoginAttemptsService
+interface ILoginAttemptsService {
+  // Find all login attempts with pagination
+  findAll(page?: number, limit?: number): Promise<LoginAttemptRow[]>;
+
+  // Find a single login attempt by ID
+  findOne(id: number): Promise<LoginAttemptRow | null>;
+}
 
 @Injectable()
-export class LoginAttemptsService {
+export class LoginAttemptsService implements ILoginAttemptsService {
   constructor(
     private readonly loginAttemptRepository: LoginAttemptRepository,
   ) {}
-  findAll(page = 1, limit = 20) {
+
+  // Find all login attempts with pagination
+  findAll(page = 1, limit = 20): Promise<LoginAttemptRow[]> {
     return this.loginAttemptRepository.findManyPaginated(page, limit);
   }
-  findOne(id: number) {
+
+  // Find a single login attempt by ID
+  findOne(id: number): Promise<LoginAttemptRow | null> {
     return this.loginAttemptRepository.findById(id);
   }
 }
