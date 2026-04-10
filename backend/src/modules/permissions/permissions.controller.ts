@@ -24,22 +24,26 @@ class PermissionDto {
 @Controller('permissions')
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
-  @Get()
+
+  @Get() // Get all permissions
   @RequirePermissions('permission.read')
   findAll() {
     return this.permissionsService.findAll();
   }
-  @Post()
+
+  @Post() // Create new permission
   @RequirePermissions('permission.manage')
   create(@Body() dto: PermissionDto) {
     return this.permissionsService.create(dto);
   }
-  @Patch(':id')
+
+  @Patch(':id') // Edit permission
   @RequirePermissions('permission.manage')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: PermissionDto) {
     return this.permissionsService.update(id, dto);
   }
-  @Delete(':id')
+
+  @Delete(':id') // Delete permission
   @RequirePermissions('permission.manage')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.permissionsService.remove(id);
