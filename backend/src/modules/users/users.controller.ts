@@ -24,6 +24,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { UsersService } from './users.service';
 
+// DTO for creating user
 class CreateUserDto {
   @IsEmail() email!: string;
   @IsString() @MinLength(8) password!: string;
@@ -32,6 +33,8 @@ class CreateUserDto {
   @IsOptional() @IsEnum(UserStatus) status?: UserStatus;
   @IsOptional() @IsArray() @IsInt({ each: true }) roleIds?: number[];
 }
+
+// DTO for updating user
 class UpdateUserDto {
   @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsString() @MinLength(8) password?: string;
@@ -47,25 +50,25 @@ class UpdateUserDto {
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get()
+  @Get() // Find all users and paginate them
   @RequirePermissions('user.read')
   findAll(@Query('page') page = 1, @Query('limit') limit = 20) {
     return this.usersService.findAll(Number(page), Number(limit));
   }
 
-  @Get(':id')
+  @Get(':id') // Find specific user (by id)
   @RequirePermissions('user.read')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.findOne(id);
   }
 
-  @Post()
+  @Post() // Create new user
   @RequirePermissions('user.create')
   create(@Body() dto: CreateUserDto, @CurrentUser() actor: { id: number }) {
     return this.usersService.create(dto, actor.id);
   }
 
-  @Patch(':id')
+  @Patch(':id') // Update user's fields
   @RequirePermissions('user.update')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -75,7 +78,7 @@ export class UsersController {
     return this.usersService.update(id, dto, actor.id);
   }
 
-  @Patch(':id/status')
+  @Patch(':id/status') // Updating user's status
   @RequirePermissions('user.update')
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
@@ -85,7 +88,7 @@ export class UsersController {
     return this.usersService.updateStatus(id, status, actor.id);
   }
 
-  @Delete(':id')
+  @Delete(':id') // Disable user
   @RequirePermissions('user.delete')
   remove(
     @Param('id', ParseIntPipe) id: number,
@@ -94,7 +97,7 @@ export class UsersController {
     return this.usersService.disable(id, actor.id);
   }
 
-  @Post(':id/roles')
+  @Post(':id/roles') // Assign new roles to user
   @RequirePermissions('role.assign')
   assignRoles(
     @Param('id', ParseIntPipe) id: number,
@@ -104,7 +107,7 @@ export class UsersController {
     return this.usersService.assignRoles(id, roleIds, actor.id);
   }
 
-  @Delete(':id/roles/:roleId')
+  @Delete(':id/roles/:roleId') // Remove user's role
   @RequirePermissions('role.assign')
   removeRole(
     @Param('id', ParseIntPipe) id: number,
