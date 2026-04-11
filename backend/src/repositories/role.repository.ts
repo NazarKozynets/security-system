@@ -76,6 +76,7 @@ export class RoleRepository implements IRoleRepository {
     return tx ?? this.prisma.client;
   }
 
+  // Finds role by name
   async findByName(name: string, tx?: Tx): Promise<{ id: number } | null> {
     const rows = await this.db(tx).$queryRaw<{ id: number }[]>`
       SELECT id FROM "Role" WHERE name = ${name} LIMIT 1
@@ -83,6 +84,7 @@ export class RoleRepository implements IRoleRepository {
     return rows[0] ?? null;
   }
 
+  // Finds all roles with their permissions
   async findAllWithPermissions(tx?: Tx): Promise<RoleWithPermissions[]> {
     const rows = await this.db(tx).$queryRaw<RoleFlatRow[]>`
       SELECT
@@ -101,6 +103,7 @@ export class RoleRepository implements IRoleRepository {
     return buildRolesFromRows(rows);
   }
 
+  // Creates new role
   async create(
     data: { name: string; description?: string },
     tx?: Tx,
@@ -120,6 +123,7 @@ export class RoleRepository implements IRoleRepository {
     return rows[0];
   }
 
+  // Updates role (find by id and update fields)
   async update(
     id: number,
     data: { name?: string; description?: string },
@@ -131,9 +135,11 @@ export class RoleRepository implements IRoleRepository {
     createdAt: Date;
   }> {
     const sets: Prisma.Sql[] = [];
+
     if (data.name !== undefined) sets.push(Prisma.sql`name = ${data.name}`);
-    if (data.description !== undefined)
-      sets.push(Prisma.sql`description = ${data.description}`);
+
+    if (data.description !== undefined) sets.push(Prisma.sql`description = ${data.description}`);
+
     if (!sets.length) {
       const rows = await this.db(tx).$queryRaw<
         {
@@ -147,6 +153,7 @@ export class RoleRepository implements IRoleRepository {
       `;
       return rows[0];
     }
+
     const rows = await this.db(tx).$queryRaw<
       {
         id: number;
@@ -163,6 +170,7 @@ export class RoleRepository implements IRoleRepository {
     return rows[0];
   }
 
+  // Deletes role by id
   async deleteById(id: number, tx?: Tx): Promise<void> {
     await this.db(tx).$executeRaw`
       DELETE FROM "Role" WHERE id = ${id}

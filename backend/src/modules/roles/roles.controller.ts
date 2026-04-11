@@ -27,27 +27,32 @@ class AssignPermissionsDto {
 @Controller('roles')
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
-  @Get()
+
+  @Get() // Find all roles
   @RequirePermissions('role.read')
   findAll() {
     return this.rolesService.findAll();
   }
-  @Post()
+
+  @Post() // Create new role
   @RequirePermissions('role.manage')
   create(@Body() dto: RoleDto) {
     return this.rolesService.create(dto);
   }
-  @Patch(':id')
+
+  @Patch(':id') // Get specific role
   @RequirePermissions('role.manage')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: RoleDto) {
     return this.rolesService.update(id, dto);
   }
-  @Delete(':id')
+
+  @Delete(':id') // Delete role
   @RequirePermissions('role.manage')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.rolesService.remove(id);
   }
-  @Post(':id/permissions')
+
+  @Post(':id/permissions') // Get specific role's permissions
   @RequirePermissions('permission.manage')
   assignPermissions(
     @Param('id', ParseIntPipe) id: number,
@@ -56,7 +61,8 @@ export class RolesController {
   ) {
     return this.rolesService.assignPermissions(id, dto.permissionIds, actor.id);
   }
-  @Delete(':id/permissions/:permissionId')
+
+  @Delete(':id/permissions/:permissionId') // Delete specific role's permission
   @RequirePermissions('permission.manage')
   removePermission(
     @Param('id', ParseIntPipe) id: number,
