@@ -18,7 +18,7 @@ import { ReportsService } from './reports.service';
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
-  @Get('export/login-attempts.csv')
+  @Get('export/login-attempts.csv') // Export filtered by date login attempts as .csv file
   @RequirePermissions('security.report.read')
   async exportLoginAttemptsCsv(
     @Res() res: Response,
@@ -37,15 +37,17 @@ export class ReportsController {
       },
       user.id,
     );
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',
       'attachment; filename="login-attempts.csv"',
     );
+
     return res.send(csv);
   }
 
-  @Get('export/security-events.csv')
+  @Get('export/security-events.csv') // Export filtered by date security events as .csv file
   @RequirePermissions('security.report.read')
   async exportSecurityEventsCsv(
     @Res() res: Response,
@@ -59,30 +61,34 @@ export class ReportsController {
       { from, to, eventType, severity },
       user.id,
     );
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',
       'attachment; filename="security-events.csv"',
     );
+
     return res.send(csv);
   }
 
-  @Get('export/summary.pdf')
+  @Get('export/summary.pdf') // Export summary report as .pdf file
   @RequirePermissions('security.report.read')
   async exportSummaryPdf(
     @Res() res: Response,
     @CurrentUser() user: { id: number },
   ) {
     const buf = await this.reportsService.summaryPdf(user.id);
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
       'attachment; filename="security-summary.pdf"',
     );
+
     return res.send(buf);
   }
 
-  @Get('login-attempts')
+  @Get('login-attempts') // Get list of login attempts
   @RequirePermissions('security.report.read')
   loginAttempts(
     @Query('from') from?: string,
@@ -98,7 +104,7 @@ export class ReportsController {
     });
   }
 
-  @Get('security-events')
+  @Get('security-events') // Get list of security events
   @RequirePermissions('security.report.read')
   securityEvents(
     @Query('from') from?: string,
@@ -114,19 +120,19 @@ export class ReportsController {
     });
   }
 
-  @Get('suspicious-activity')
+  @Get('suspicious-activity') // Get list of suspicious activity events
   @RequirePermissions('security.report.read')
   suspicious() {
     return this.reportsService.suspiciousActivity();
   }
 
-  @Get('user-access/:id')
+  @Get('user-access/:id') // Get specific user's information
   @RequirePermissions('security.report.read')
   userAccess(@Param('id', ParseIntPipe) id: number) {
     return this.reportsService.userAccess(id);
   }
 
-  @Get('dashboard')
+  @Get('dashboard') // Get information for dashboard page
   @RequirePermissions('security.report.read')
   dashboard() {
     return this.reportsService.dashboard();
