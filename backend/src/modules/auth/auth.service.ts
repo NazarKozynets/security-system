@@ -34,6 +34,9 @@ interface IAuthService {
     // Get current user's information
     me(userId: number): Promise<UserResponseDto>;
 
+    // Validate a user extracted from a JWT payload and return their context
+    validateJwtUser(userId: number): Promise<UserResponseDto>;
+
     // Refresh tokens and returns AuthPayloadDto with these tokens and user's context
     refresh(refreshToken: string): Promise<AuthPayloadDto>;
 
@@ -275,9 +278,15 @@ export class AuthService implements IAuthService {
 
     // Get current user's information
     async me(userId: number): Promise<UserResponseDto> {
+        return this.validateJwtUser(userId);
+    }
+
+    // Validate a user referenced by a JWT payload and return their context.
+    // Used by JwtStrategy on every authenticated request.
+    async validateJwtUser(userId: number): Promise<UserResponseDto> {
         const user = await this.userRepository.findByIdWithRbac(userId);
 
-        // If user wasn't found or his status isn't 'ACTIVE', we should throw an error which frontend will hand and unauthorize user
+        // Reject missing or non-active users so the request is unauthorized
         if (!user || user.status !== UserStatus.ACTIVE) {
             throw new UnauthorizedException('Invalid user');
         }

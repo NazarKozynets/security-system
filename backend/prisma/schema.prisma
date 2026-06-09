@@ -65,6 +65,8 @@ model Role {
   createdAt       DateTime         @default(now())
   userRoles       UserRole[]
   rolePermissions RolePermission[]
+
+  @@index([createdAt])
 }
 
 model Permission {
@@ -74,6 +76,8 @@ model Permission {
   description     String?          @db.VarChar(255)
   createdAt       DateTime         @default(now())
   rolePermissions RolePermission[]
+
+  @@index([createdAt])
 }
 
 model UserRole {
@@ -81,11 +85,12 @@ model UserRole {
   roleId     Int
   assignedAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([userId, roleId])
   @@index([roleId])
+  @@index([assignedAt])
 }
 
 model RolePermission {
@@ -93,29 +98,31 @@ model RolePermission {
   permissionId Int
   assignedAt   DateTime @default(now())
 
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([roleId, permissionId])
   @@index([permissionId])
+  @@index([assignedAt])
 }
 
 model LoginAttempt {
-  id           Int      @id @default(autoincrement())
-  userId       Int?
-  email        String   @db.VarChar(255)
-  ipAddress    String?  @db.VarChar(64)
-  userAgent    String?  @db.VarChar(512)
-  success      Boolean
-  failureReason String? @db.VarChar(255)
-  attemptedAt  DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  userId        Int?
+  email         String   @db.VarChar(255)
+  ipAddress     String?  @db.VarChar(64)
+  userAgent     String?  @db.VarChar(512)
+  success       Boolean
+  failureReason String?  @db.VarChar(255)
+  attemptedAt   DateTime @default(now())
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([attemptedAt])
   @@index([email])
   @@index([success, attemptedAt])
   @@index([userId])
+  @@index([ipAddress])
 }
 
 model SecurityEvent {
@@ -130,12 +137,13 @@ model SecurityEvent {
   ipAddress   String?   @db.VarChar(64)
   createdAt   DateTime  @default(now())
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([createdAt])
   @@index([eventType, createdAt])
   @@index([severity, createdAt])
   @@index([userId])
+  @@index([ipAddress])
 }
 
 model RefreshToken {
@@ -147,9 +155,10 @@ model RefreshToken {
   replacedById  Int?
   createdAt     DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([userId, createdAt])
   @@index([expiresAt])
   @@index([revokedAt])
+  @@index([tokenHash])
 }
